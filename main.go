@@ -13,23 +13,92 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	codec "github.com/cosmos/cosmos-sdk/codec"
+	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/server"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/spf13/cobra"
 
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 
-	"github.com/CosmosContracts/juno/v13/app"
-	"github.com/CosmosContracts/juno/v13/app/params"
+	// Latest app version here
+	app "github.com/CosmosContracts/juno/v13/app"
+	// older params here
+	v12params "github.com/CosmosContracts/juno/v12/app/params"
+	v13params "github.com/CosmosContracts/juno/v13/app/params"
 )
 
-// juno-decode tx decode <tx-b64>
+// define the methods that are common to both v12 and v13 encoding configs
+type EncodingConfig struct {
+	InterfaceRegistry cdctypes.InterfaceRegistry
+	Marshaler         codec.Codec
+	TxConfig          client.TxConfig
+	Amino             *codec.LegacyAmino
+}
+
+// V12
+func V12MakeEncodingConfig() EncodingConfig {
+	v := v12params.MakeEncodingConfig()
+	return EncodingConfig{
+		InterfaceRegistry: v.InterfaceRegistry,
+		Marshaler:         v.Marshaler,
+		TxConfig:          v.TxConfig,
+		Amino:             v.Amino,
+	}
+}
+
+// v13
+func V13MakeEncodingConfig() EncodingConfig {
+	v := v13params.MakeEncodingConfig()
+	return EncodingConfig{
+		InterfaceRegistry: v.InterfaceRegistry,
+		Marshaler:         v.Marshaler,
+		TxConfig:          v.TxConfig,
+		Amino:             v.Amino,
+	}
+}
+
+func MakeEncodingConfig(version string) EncodingConfig {
+	if version == "v12" {
+		return V12MakeEncodingConfig()
+	} else if version == "v13" {
+		return V13MakeEncodingConfig()
+	} else {
+		panic("invalid make encoding config version not found")
+	}
+}
+
+var nodeHome string
 
 func main() {
-	rootCmd, _ := NewRootCmd()
-	if err := svrcmd.Execute(rootCmd, app.DefaultNodeHome); err != nil {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: ./juno-decoder v13 tx decode <tx-b64>")
+		return
+	}
+
+	// print os.Args
+
+	nodeHome = app.DefaultNodeHome
+
+	// maybe put this at the very end?
+	appVersion := ""
+	switch os.Args[1] {
+	case "v13":
+		appVersion = "v13"
+	case "v12":
+		appVersion = "v12"
+	default:
+		panic("Usage: ./juno-decoder v13 ...")
+	}
+
+	os.Args = append(os.Args[:1], os.Args[2:]...)
+	fmt.Println("Updated os.Args: ", os.Args)
+
+	rootCmd := NewRootCmd(appVersion)
+	if err := svrcmd.Execute(rootCmd, nodeHome); err != nil {
 		switch e := err.(type) {
 		case server.ErrorCode:
 			os.Exit(e.Code)
@@ -40,8 +109,8 @@ func main() {
 	}
 }
 
-func NewRootCmd() (*cobra.Command, params.EncodingConfig) {
-	encodingConfig := app.MakeEncodingConfig()
+func NewRootCmd(appVersion string) *cobra.Command {
+	encodingConfig := MakeEncodingConfig(appVersion)
 
 	cfg := sdk.GetConfig()
 	cfg.SetBech32PrefixForAccount(app.Bech32PrefixAccAddr, app.Bech32PrefixAccPub)
@@ -55,9 +124,9 @@ func NewRootCmd() (*cobra.Command, params.EncodingConfig) {
 		WithTxConfig(encodingConfig.TxConfig).
 		WithLegacyAmino(encodingConfig.Amino).
 		WithInput(os.Stdin).
-		// WithAccountRetriever(authtypes.AccountRetriever{}).
+		WithAccountRetriever(authtypes.AccountRetriever{}).
 		// WithBroadcastMode(flags.BroadcastBlock).
-		// WithHomeDir(app.DefaultNodeHome).
+		WithHomeDir(app.DefaultNodeHome).
 		WithViper("")
 
 	rootCmd := &cobra.Command{
@@ -76,12 +145,12 @@ func NewRootCmd() (*cobra.Command, params.EncodingConfig) {
 		},
 	}
 
-	initRootCmd(rootCmd, encodingConfig)
+	initRootCmd(rootCmd)
 
-	return rootCmd, encodingConfig
+	return rootCmd
 }
 
-func initRootCmd(rootCmd *cobra.Command, encodingConfig params.EncodingConfig) {
+func initRootCmd(rootCmd *cobra.Command) {
 	// Keeping it as close to the original as possible
 	rootCmd.AddCommand(
 		txCommand(),

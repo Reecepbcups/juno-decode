@@ -24,7 +24,9 @@ replace (
 )
 
 require (
+	github.com/CosmosContracts/juno/v12 v12.0.0
 	github.com/CosmosContracts/juno/v13 v13.0.1
+	// github.com/CosmosContracts/juno/v14 v14.1.0 // breaks for now due to CometBFT vs Tendermint
 	github.com/cosmos/cosmos-sdk v0.45.14
 	github.com/spf13/cobra v1.6.1
 )
